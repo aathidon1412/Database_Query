@@ -5,6 +5,8 @@ import viteLogo from "/vite.svg";
 export default function App() {
   const [file, setFile] = useState(null);
   const [englishQuery, setEnglishQuery] = useState("");
+  const [sampleRows, setSampleRows] = useState([]);
+  const [showSample, setShowSample] = useState(false);
 
   const handleFileUpload = (e) => {
     setFile(e.target.files[0]);
@@ -21,7 +23,7 @@ export default function App() {
       const formData = new FormData();
       formData.append("file", file); // 👈 field name MUST be "file"
 
-      const response = await fetch("http://localhost:5001/api/excel/upload", {
+      const response = await fetch("/api/excel/upload", {
         method: "POST",
         body: formData,
       });
@@ -31,7 +33,8 @@ export default function App() {
       }
 
       const result = await response.json();
-      alert(`✅ ${result.message}\nRows Inserted: ${result.rows}`);
+      // Backend returns inserted, rowsInFile and totalInCollection
+      alert(`✅ ${result.message}\nInserted: ${result.inserted} (in file: ${result.rowsInFile})\nTotal in collection: ${result.totalInCollection}`);
     } catch (error) {
       console.error(error);
       alert("❌ Error uploading file");
@@ -78,6 +81,91 @@ export default function App() {
           >
             Upload File
           </button>
+          <button
+            onClick={async () => {
+              try {
+                const res = await fetch("/api/excel/sample");
+                if (!res.ok) throw new Error("Failed to fetch sample");
+                const data = await res.json();
+                setSampleRows(data.rows || []);
+                setShowSample(true);
+              } catch (err) {
+                console.error(err);
+                alert("Error fetching sample");
+              }
+            }}
+            className="mt-3 w-full bg-green-600 text-white py-2 rounded-xl shadow hover:bg-green-700 transition"
+          >
+            Show Sample (first 5)
+          </button>
+
+          {showSample && (
+            <div className="mt-4 p-3 bg-white/70 rounded-lg text-left max-h-80 overflow-auto">
+              <div className="flex justify-between items-center mb-2">
+                <strong>Sample Documents ({sampleRows.length})</strong>
+                <button onClick={() => setShowSample(false)} className="text-sm text-gray-600 underline">Close</button>
+              </div>
+
+              {/* Build table columns from sampleRows keys */}
+              {sampleRows.length === 0 ? (
+                <div className="text-sm text-gray-700">No sample documents available.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm text-left">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        {(() => {
+                          // Collect union of keys
+                          const keySet = new Set();
+                          sampleRows.forEach(r => Object.keys(r || {}).forEach(k => keySet.add(k)));
+                          // Preferred order: batchId, uploadedAt, then others alphabetically
+                          const keys = Array.from(keySet);
+                          const pref = ["batchId", "uploadedAt"];
+                          const ordered = [
+                            ...pref.filter(k => keys.includes(k)),
+                            ...keys.filter(k => !pref.includes(k)).sort()
+                          ];
+                          return ordered.map((k) => (
+                            <th key={k} className="px-3 py-2 font-medium text-gray-700">{k}</th>
+                          ));
+                        })()}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sampleRows.map((row, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          {(() => {
+                            const keySet = new Set();
+                            sampleRows.forEach(r => Object.keys(r || {}).forEach(k => keySet.add(k)));
+                            const keys = Array.from(keySet);
+                            const pref = ["batchId", "uploadedAt"];
+                            const ordered = [
+                              ...pref.filter(k => keys.includes(k)),
+                              ...keys.filter(k => !pref.includes(k)).sort()
+                            ];
+                            return ordered.map((k) => {
+                              let v = row[k];
+                              // Format dates
+                              if (v && typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) {
+                                try { v = new Date(v).toLocaleString(); } catch (e) {}
+                              }
+                              // Convert objects to brief JSON
+                              if (v && typeof v === 'object') v = JSON.stringify(v);
+                              return (
+                                <td key={k} className="px-3 py-2 align-top text-gray-800 whitespace-pre-wrap max-w-xs">
+                                  {v === undefined ? "-" : String(v)}
+                                </td>
+                              );
+                            });
+                          })()}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Run Query Section */}
