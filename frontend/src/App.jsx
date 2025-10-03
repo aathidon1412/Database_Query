@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { useState } from "react";
+import reactLogo from "./assets/react.svg";
+import viteLogo from "/vite.svg";
 
 export default function App() {
   const [file, setFile] = useState(null);
@@ -10,11 +10,31 @@ export default function App() {
     setFile(e.target.files[0]);
   };
 
-  const handleUpload = () => {
-    if (file) {
-      alert(`File "${file.name}" uploaded successfully!`);
-    } else {
+  // ✅ API Integration for Upload
+  const handleUpload = async () => {
+    if (!file) {
       alert("Please select a file first!");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file); // 👈 field name MUST be "file"
+
+      const response = await fetch("http://localhost:5001/api/excel/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload file");
+      }
+
+      const result = await response.json();
+      alert(`✅ ${result.message}\nRows Inserted: ${result.rows}`);
+    } catch (error) {
+      console.error(error);
+      alert("❌ Error uploading file");
     }
   };
 
