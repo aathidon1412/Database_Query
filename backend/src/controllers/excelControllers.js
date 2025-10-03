@@ -1,12 +1,12 @@
 import xlsx from "xlsx";
 import ExcelModel from "../models/Excel.js";
+import { v4 as uuidv4 } from "uuid";  // npm install uuid
 
 // Upload & Save Excel
 export const uploadExcel = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    // Parse Excel
     const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
@@ -15,20 +15,84 @@ export const uploadExcel = async (req, res) => {
       return res.status(400).json({ message: "Excel sheet is empty" });
     }
 
-        // Save to MongoDB
-        const insertResult = await ExcelModel.insertMany(sheetData);
+    // Add batchId to each row
+    const batchId = uuidv4();
+    const rowsWithMeta = sheetData.map(row => ({
+      ...row,
+      batchId,
+      uploadedAt: new Date()
+    }));
 
-        // Get current document count in the collection to help verify storage
-        const totalDocs = await ExcelModel.estimatedDocumentCount();
+    // Save to MongoDB
+    const insertResult = await ExcelModel.insertMany(rowsWithMeta);
 
-        res.status(201).json({
-          message: "✅ Excel data uploaded successfully",
-          inserted: insertResult.length,
-          rowsInFile: sheetData.length,
-          totalInCollection: totalDocs,
-        });
+    const totalDocs = await ExcelModel.estimatedDocumentCount();
+
+    res.status(201).json({
+      message: "Excel data uploaded successfully",
+      inserted: insertResult.length,
+      rowsInFile: sheetData.length,
+      totalInCollection: totalDocs,
+      batchId
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "❌ Server Error" });
+    res.status(500).json({ message: "Server Error" });
   }
 };
+
+// Get latest uploaded Excel data
+export const getLatestExcel = async (req, res) => {
+  try {
+    // Find the latest batchId
+    const latestDoc = await ExcelModel.findOne().sort({ uploadedAt: -1 });
+    if (!latestDoc) {
+      return res.status(404).json({ message: "No Excel data found" });
+    }
+
+    const latestBatchId = latestDoc.batchId;
+
+    // Fetch all rows with that batchId
+    const latestRows = await ExcelModel.find({ batchId: latestBatchId });
+
+    res.status(200).json({
+      message: "Latest uploaded Excel data fetched",
+      batchId: latestBatchId,
+      rows: latestRows
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// Get a small sample (first 5 documents) from the collection for quick verification
+export const getSampleExcel = async (req, res) => {
+  try {
+    // Return up to 5 documents. No filters — just a quick sample.
+    const sample = await ExcelModel.find().limit(5).lean();
+
+    res.status(200).json({
+      message: "Sample documents fetched",
+      count: sample.length,
+      rows: sample,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// Endpoint: /api/excel/query
+export async function handleExcelUpload(req, res) {
+  try {
+    const { userInput, schemaFields } = req.body;
+
+    const mongoQuery = await generateMongoQuery(userInput, schemaFields);
+
+    res.json({ query: mongoQuery });
+  } catch (err) {
+    console.error("Error generating query:", err);
+    res.status(500).json({ error: "Failed to generate MongoDB query" });
+  }
+}
