@@ -1,11 +1,18 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors"; 
 import connectDB from "./config/db.js";
 import excelRoutes from "./routes/excelRoutes.js";
 
 dotenv.config();
 
 const app = express();
+
+app.use(cors({
+  origin: "http://localhost:5173", // allow only your frontend
+  methods: ["GET", "POST"],        // allowed methods
+  credentials: true
+}));
 
 // Connect DB
 connectDB();
