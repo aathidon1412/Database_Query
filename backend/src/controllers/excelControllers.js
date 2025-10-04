@@ -52,8 +52,11 @@ export const getLatestExcel = async (req, res) => {
 
     const latestBatchId = latestDoc.batchId;
 
-    // Fetch all rows with that batchId
-    const latestRows = await ExcelModel.find({ batchId: latestBatchId });
+    // Fetch all rows with that batchId but exclude unwanted fields
+    const latestRows = await ExcelModel.find(
+      { batchId: latestBatchId },
+      { _id: 0, batchId: 0, __v: 0, uploadedAt: 0 }   // exclude meta fields
+    );
 
     res.status(200).json({
       message: "Latest uploaded Excel data fetched",
@@ -66,33 +69,4 @@ export const getLatestExcel = async (req, res) => {
   }
 };
 
-// Get a small sample (first 5 documents) from the collection for quick verification
-export const getSampleExcel = async (req, res) => {
-  try {
-    // Return up to 5 documents. No filters — just a quick sample.
-    const sample = await ExcelModel.find().limit(5).lean();
 
-    res.status(200).json({
-      message: "Sample documents fetched",
-      count: sample.length,
-      rows: sample,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server Error" });
-  }
-};
-
-// Endpoint: /api/excel/query
-export async function handleExcelUpload(req, res) {
-  try {
-    const { userInput, schemaFields } = req.body;
-
-    const mongoQuery = await generateMongoQuery(userInput, schemaFields);
-
-    res.json({ query: mongoQuery });
-  } catch (err) {
-    console.error("Error generating query:", err);
-    res.status(500).json({ error: "Failed to generate MongoDB query" });
-  }
-}
