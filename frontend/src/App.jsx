@@ -1,70 +1,118 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
 
 export default function App() {
   const [file, setFile] = useState(null);
-  const [englishQuery, setEnglishQuery] = useState("");
+  const [fileType, setFileType] = useState(""); // auto-detected
   const [sampleRows, setSampleRows] = useState([]);
   const [showSample, setShowSample] = useState(false);
+  const [englishQuery, setEnglishQuery] = useState("");
 
-  const handleFileUpload = (e) => {
-    setFile(e.target.files[0]);
+  // ✅ Detect file type based on extension
+  const detectFileType = (filename) => {
+    const ext = filename.split(".").pop().toLowerCase();
+    if (ext === "xlsx" || ext === "xls") return "excel";
+    if (ext === "csv") return "csv";
+    if (ext === "tsv") return "tsv";
+    if (ext === "xml") return "xml";
+    if (ext === "json") return "json";
+    return "";
   };
 
-  // ✅ API Integration for Upload
+  const handleFileUpload = (e) => {
+    const selectedFile = e.target.files[0];
+    setFile(selectedFile);
+    const type = detectFileType(selectedFile.name);
+    setFileType(type);
+  };
+
+  // ✅ Upload to correct backend API
   const handleUpload = async () => {
-    if (!file) {
-      alert("Please select a file first!");
-      return;
-    }
+    if (!file) return alert("Please select a file first!");
+    if (!fileType) return alert("Unsupported file type!");
 
     try {
       const formData = new FormData();
-      formData.append("file", file); // 👈 field name MUST be "file"
+      formData.append("file", file);
 
-      const response = await fetch("http://localhost:5001/api/excel/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        `http://localhost:5001/api/${fileType}/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-      if (!response.ok) {
-        throw new Error("Failed to upload file");
-      }
+      if (!response.ok) throw new Error("Upload failed");
 
       const result = await response.json();
       alert(
-        `✅ ${result.message}\nInserted: ${result.inserted} (in file: ${result.rowsInFile})`
+        `✅ ${result.message}\nInserted: ${result.inserted}\nBatch ID: ${result.batchId}`
       );
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       alert("❌ Error uploading file");
     }
   };
 
-  const handleRunQuery = () => {
-    alert("Running SQL query...");
-  };
-
-  const handleEnglishQuery = () => {
-    if (englishQuery.trim()) {
-      alert(`Converting English to SQL:\n"${englishQuery}"`);
+  // Helper: Flatten deeply nested objects (for XML)
+const flattenObject = (obj) => {
+  const result = {};
+  for (const key in obj) {
+    if (typeof obj[key] === "object" && obj[key] !== null && !Array.isArray(obj[key])) {
+      const flat = flattenObject(obj[key]);
+      for (const subKey in flat) {
+        result[`${key}.${subKey}`] = flat[subKey];
+      }
     } else {
-      alert("Please enter an English query!");
+      result[key] = obj[key];
     }
-  };
+  }
+  return result;
+};
 
-  const fetchLatest = async () => {
-    try {
-      const res = await fetch("http://localhost:5001/api/excel/latest");
-      if (!res.ok) throw new Error("Failed to fetch latest");
-      const data = await res.json();
-      setSampleRows(data.rows || []);
-      setShowSample(true);
-    } catch (err) {
-      console.error(err);
-      alert("Error fetching latest rows");
+// Modified fetchLatest function
+const fetchLatest = async () => {
+  if (!fileType) return alert("Please upload or select a file first!");
+
+  try {
+    const res = await fetch(`http://localhost:5001/api/${fileType}/latest`);
+    if (!res.ok) throw new Error("Failed to fetch latest");
+    const data = await res.json();
+
+    let rows = data.rows || [];
+
+    // Special handling for XML: flatten nested structure
+    if (fileType === "xml") {
+      const normalized = [];
+      rows.forEach((r) => {
+        const firstKey = Object.keys(r)[0];
+        const inner = r[firstKey];
+
+        if (Array.isArray(inner)) {
+          inner.forEach((item) => normalized.push(flattenObject(item)));
+        } else if (typeof inner === "object") {
+          normalized.push(flattenObject(inner));
+        } else {
+          normalized.push({ [firstKey]: inner });
+        }
+      });
+      rows = normalized;
     }
+
+    setSampleRows(rows);
+    setShowSample(true);
+  } catch (err) {
+    console.error(err);
+    alert("Error fetching latest data");
+  }
+};
+
+
+  const handleRunQuery = () => alert("SQL query execution not yet implemented");
+  const handleEnglishQuery = () => {
+    if (!englishQuery.trim())
+      return alert("Please enter an English query first!");
+    alert(`🧠 Translating English to SQL:\n"${englishQuery}"`);
   };
 
   return (
@@ -72,12 +120,10 @@ export default function App() {
       className="min-h-screen flex flex-col items-center justify-start 
       bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300 p-6"
     >
-      {/* Heading */}
       <h1 className="text-5xl font-extrabold text-white drop-shadow-lg mb-10">
         Data Query Gateway
       </h1>
 
-      {/* Cards container */}
       <div className="grid md:grid-cols-3 gap-8 w-full max-w-6xl mb-10">
         {/* Upload Section */}
         <div className="backdrop-blur-lg bg-white/40 p-8 rounded-2xl shadow-2xl">
@@ -86,9 +132,15 @@ export default function App() {
           </h2>
           <input
             type="file"
+            accept=".csv,.tsv,.xlsx,.xls,.xml,.json"
             onChange={handleFileUpload}
             className="w-full mb-4 text-gray-700"
           />
+          {file && (
+            <p className="text-sm text-gray-600 mb-2">
+              Selected file: <strong>{file.name}</strong> ({fileType})
+            </p>
+          )}
           <button
             onClick={handleUpload}
             className="w-full bg-blue-600 text-white py-2 rounded-xl shadow hover:bg-blue-700 transition"
@@ -130,7 +182,7 @@ export default function App() {
             type="text"
             value={englishQuery}
             onChange={(e) => setEnglishQuery(e.target.value)}
-            placeholder="e.g. Show all students..."
+            placeholder="e.g. Show all employees older than 30..."
             className="w-full p-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-400"
           />
           <button
@@ -142,11 +194,13 @@ export default function App() {
         </div>
       </div>
 
-      {/* Table Section - BELOW cards */}
+      {/* Display Latest Records */}
       {showSample && (
         <div className="w-full max-w-6xl backdrop-blur-lg bg-white/70 p-6 rounded-2xl shadow-2xl">
           <div className="flex justify-between items-center mb-2">
-            <strong>Show All Records ({sampleRows.length})</strong>
+            <strong>
+              Latest Records ({sampleRows.length}) — {fileType.toUpperCase()}
+            </strong>
             <button
               onClick={() => setShowSample(false)}
               className="text-sm text-gray-600 underline"
