@@ -1,36 +1,40 @@
 import express from "express";
 import dotenv from "dotenv";
-import cors from "cors"; 
+import cors from "cors";
 import connectDB from "./config/db.js";
 import excelRoutes from "./routes/excelRoutes.js";
+import csvRoutes from "./routes/csvRoutes.js"; // <-- NEW
 
 dotenv.config();
 
 const app = express();
 
-//Improved CORS: allow multiple origins easily if needed later
-app.use(cors({
-  origin: ["http://localhost:5173"], // add frontend URLs here
-  methods: ["GET", "POST"],
-  credentials: true
-}));
+// Improved CORS
+app.use(
+  cors({
+    origin: ["http://localhost:5173"], // frontend URL
+    methods: ["GET", "POST"],
+    credentials: true,
+  })
+);
 
-//Connect MongoDB
+// Connect DB
 connectDB();
 
-//Middleware
+// Middleware
 app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // in case you add form-data later
+app.use(express.urlencoded({ extended: true }));
 
-//Routes
+// Routes
 app.use("/api/excel", excelRoutes);
+app.use("/api/csv", csvRoutes); // <-- NEW
 
-//Default route (optional health check)
+// Default route
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
-//Start server
+// Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
